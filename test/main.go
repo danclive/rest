@@ -139,4 +139,32 @@ func main() {
 	}
 
 	fmt.Println(string(res.Body()))
+
+	response := Response{}
+
+	fmt.Println(res.Json(&response))
+
+	fmt.Println(response)
+}
+
+type Response struct {
+	Success bool    `json:"success"`
+	Message Message `json:"message"`
+	Data    Data    `json:"data"`
+}
+
+type Message struct {
+	Code  int `json:"success"`
+	Error string
+}
+
+type Data struct {
+	Articles []Article `json:"articles"`
+}
+
+type Article struct {
+	Id    string   `json:"id"`
+	Title string   `json:"title"`
+	Image []string `json:"image"`
+	//Summary string   `json:"summary"`
 }

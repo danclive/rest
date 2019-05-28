@@ -7,7 +7,11 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	jsoniter "github.com/json-iterator/go"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 func NewRest() *Rest {
 	tr := &http.Transport{
@@ -46,71 +50,36 @@ func (r *Rest) After(fn func(res *Res)) *Rest {
 	return r
 }
 
-/*
 func (r *Rest) Options(path string) *Req {
-	request, _ := http.NewRequest("OPTIONS", r.baseUrl+path, nil)
-	return &Req{rest: r, request: request}
+	return New(r, "OPTIONS", path)
 }
 
 func (r *Rest) Get(path string) *Req {
-	request, _ := http.NewRequest("GET", r.baseUrl+path, nil)
-	return &Req{rest: r, request: request}
+	return New(r, "GET", path)
 }
 
 func (r *Rest) Head(path string) *Req {
-	request, _ := http.NewRequest("HEAD", r.baseUrl+path, nil)
-	return &Req{rest: r, request: request}
+	return New(r, "HEAD", path)
 }
 
 func (r *Rest) Post(path string) *Req {
-	request, _ := http.NewRequest("POST", r.baseUrl+path, nil)
-	return &Req{rest: r, request: request}
+	return New(r, "POST", path)
 }
 
 func (r *Rest) Put(path string) *Req {
-	request, _ := http.NewRequest("PUT", r.baseUrl+path, nil)
-	return &Req{rest: r, request: request}
+	return New(r, "PUT", path)
 }
 
 func (r *Rest) Delete(path string) *Req {
-	request, _ := http.NewRequest("DELETE", r.baseUrl+path, nil)
-	return &Req{rest: r, request: request}
+	return New(r, "DELETE", path)
 }
 
 func (r *Rest) Trace(path string) *Req {
-	request, _ := http.NewRequest("TRACE", r.baseUrl+path, nil)
-	return &Req{rest: r, request: request}
-}
-*/
-
-func (r *Rest) Get(path string) *Req {
-	request, err := http.NewRequest("GET", "/", nil)
-	if err != nil {
-		panic(err)
-	}
-
-	return &Req{
-		rest:    r,
-		request: request,
-		path:    path,
-		query:   make(url.Values),
-		param:   make(url.Values),
-	}
+	return New(r, "TRACE", path)
 }
 
 func (r *Rest) Connect(path string) *Req {
-	request, err := http.NewRequest("CONNECT", "/", nil)
-	if err != nil {
-		panic(err)
-	}
-
-	return &Req{
-		rest:    r,
-		request: request,
-		path:    path,
-		query:   make(url.Values),
-		param:   make(url.Values),
-	}
+	return New(r, "CONNECT", path)
 }
 
 type Req struct {
@@ -120,6 +89,21 @@ type Req struct {
 	query   url.Values
 	param   url.Values
 	json    interface{}
+}
+
+func New(rest *Rest, method, path string) *Req {
+	request, err := http.NewRequest(method, "/", nil)
+	if err != nil {
+		panic(err)
+	}
+
+	return &Req{
+		rest:    rest,
+		request: request,
+		path:    path,
+		query:   make(url.Values),
+		param:   make(url.Values),
+	}
 }
 
 func (req *Req) Raw() *http.Request {
@@ -175,8 +159,8 @@ func (req *Req) ParamsStruct(value interface{}) *Req {
 	return req
 }
 
-func (req *Req) Json(json interface{}) *Req {
-	req.json = json
+func (req *Req) Json(struc interface{}) *Req {
+	req.json = struc
 	return req
 }
 
@@ -263,7 +247,18 @@ func (req *Req) Send() (*Res, error) {
 		if len(req.param) > 0 {
 			req.ContentType("application/x-www-form-urlencoded")
 			req.Body(strings.NewReader(req.param.Encode()))
+		} else if req.json != nil {
+			req.ContentType("application/json")
+			b, err := json.Marshal(req.json)
+			if err != nil {
+				return nil, err
+			}
+			req.Body(bytes.NewReader(b))
 		}
+	}
+
+	if req.rest.before != nil {
+		req.rest.before(req)
 	}
 
 	response, err := req.rest.client.Do(req.request)
@@ -278,7 +273,13 @@ func (req *Req) Send() (*Res, error) {
 		return nil, err
 	}
 
-	return &Res{response, body}, nil
+	res := &Res{response, body}
+
+	if req.rest.after != nil {
+		req.rest.after(res)
+	}
+
+	return res, nil
 }
 
 type Res struct {
@@ -306,6 +307,6 @@ func (res *Res) Header(key string) string {
 	return res.response.Header.Get(key)
 }
 
-func (res *Res) Json(json interface{}) error {
-	return nil
+func (res *Res) Json(struc interface{}) error {
+	return json.Unmarshal(res.body, struc)
 }
